@@ -81,3 +81,7 @@ if postgresql_version < 80400
   load_sql("unnest.sql")
 end
 load_sql("dmetaphone.sql")
+
+unless connection.select_value("SELECT 1 FROM pg_catalog.pg_aggregate WHERE aggfnoid = 'tsvector_agg'::REGPROC") == "1"
+  load_sql("tsvector_agg.sql")
+end

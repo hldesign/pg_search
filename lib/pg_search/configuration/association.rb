@@ -17,6 +17,10 @@ module PgSearch
         @model.reflect_on_association(@name).table_name
       end
 
+      def collection?
+        @model.reflect_on_association(@name).collection?
+      end
+
       def join(primary_key)
         "LEFT OUTER JOIN (#{relation(primary_key).to_sql}) #{subselect_alias} ON #{subselect_alias}.id = #{primary_key}"
       end
@@ -31,17 +35,27 @@ module PgSearch
         postgresql_version = @model.connection.send(:postgresql_version)
 
         columns.map do |column|
-          case postgresql_version
-          when 0..90000
-            "array_to_string(array_agg(#{column.full_name}::text), ' ') AS #{column.alias}"
+          if collection?
+            if column.tsvector_column
+              "tsvector_agg(#{column.full_name}) AS #{column.alias}"
+            else
+              case postgresql_version
+              when 0..90000
+                "array_to_string(array_agg(#{column.full_name}::text), ' ') AS #{column.alias}"
+              else
+                "string_agg(#{column.full_name}::text, ' ') AS #{column.alias}"
+              end
+            end
           else
-            "string_agg(#{column.full_name}::text, ' ') AS #{column.alias}"
+            "#{column.full_name} AS #{column.alias}"
           end
         end.join(", ")
       end
 
       def relation(primary_key)
-        @model.unscoped.joins(@name).select("#{primary_key} AS id, #{selects}").group(primary_key)
+        query = @model.unscoped.joins(@name).select("#{primary_key} AS id, #{selects}")
+        query = query.group(primary_key) if collection?
+        query
       end
     end
   end
